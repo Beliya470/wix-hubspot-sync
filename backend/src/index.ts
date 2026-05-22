@@ -23,7 +23,7 @@ app.use(helmet({
   contentSecurityPolicy: false,
 }));
 app.use(cors({
-  origin: [config.DASHBOARD_URL],
+  origin: config.allowedOrigins,
   credentials: true,
 }));
 app.use(requestContext);

@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: wix-hubspot-sync-backend
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install && npm run build && npm run migrate up
+    startCommand: node dist/index.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: LOG_LEVEL
+        value: info
+      - key: DATABASE_URL
+        sync: false
+      - key: ENCRYPTION_KEY
+        generateValue: true
+      - key: INTERNAL_API_TOKEN
+        generateValue: true
+      - key: HUBSPOT_CLIENT_ID
+        sync: false
+      - key: HUBSPOT_CLIENT_SECRET
+        sync: false
+      - key: HUBSPOT_APP_ID
+        sync: false
+      - key: HUBSPOT_REDIRECT_URI
+        sync: false
+      - key: HUBSPOT_AUTH_BASE_URL
+        value: https://app-eu1.hubspot.com
+      - key: HUBSPOT_WEBHOOK_SECRET
+        sync: false
+      - key: PUBLIC_API_URL
+        sync: false
+      - key: DASHBOARD_URL
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false

@@ -13,6 +13,10 @@ const schema = z.object({
 
   PUBLIC_API_URL: z.string().url().default('http://localhost:3000'),
   DASHBOARD_URL: z.string().url().default('http://localhost:5173'),
+  // Comma-separated list of additional dashboard origins to allow via CORS.
+  // Useful when the frontend deploys to a stable host (Netlify) while the
+  // backend serves both the deployed frontend and local development at once.
+  ALLOWED_ORIGINS: z.string().default(''),
 
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   ENCRYPTION_KEY: z
@@ -55,6 +59,12 @@ if (!parsed.success) {
 export const config = Object.freeze({
   ...parsed.data,
   hubspotScopes: parsed.data.HUBSPOT_SCOPES.split(/\s+/).filter(Boolean),
+  allowedOrigins: Array.from(
+    new Set(
+      [parsed.data.DASHBOARD_URL, ...parsed.data.ALLOWED_ORIGINS.split(',').map((s) => s.trim())]
+        .filter(Boolean),
+    ),
+  ),
 });
 
 export type AppConfig = typeof config;

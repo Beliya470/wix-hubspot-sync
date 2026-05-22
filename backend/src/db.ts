@@ -2,10 +2,17 @@ import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 import { config } from './config';
 import { logger } from './logger';
 
+// Neon, Render Postgres, and most managed providers require TLS. We detect
+// `sslmode=require` in the connection string (the standard signal) and turn
+// SSL on. rejectUnauthorized is false because providers use shared CAs that
+// node-postgres does not bundle.
+const requiresSsl = /sslmode=require/i.test(config.DATABASE_URL);
+
 export const pool = new Pool({
   connectionString: config.DATABASE_URL,
   max: 10,
   idleTimeoutMillis: 30_000,
+  ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
 });
 
 pool.on('error', (err) => {
