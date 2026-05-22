@@ -77,11 +77,14 @@ export async function listContactProperties(installationId: string): Promise<str
 }
 
 // Convenience helper: create-or-update by email. Used by the form submission
-// route where we have an email but no HubSpot id yet.
+// route where we have an email but no HubSpot id yet. `createOnlyProperties`
+// are merged into the payload only when creating a new contact, so values
+// like `hs_lead_status = NEW` do not overwrite progress on repeat submissions.
 export async function upsertContactByEmail(
   installationId: string,
   email: string,
   properties: Record<string, string>,
+  createOnlyProperties: Record<string, string> = {},
 ): Promise<{ contact: HubspotContact; created: boolean }> {
   const existing = await findContactByEmail(installationId, email);
   if (existing) {
@@ -89,7 +92,7 @@ export async function upsertContactByEmail(
     const contact = await updateContact(installationId, existing.id, merged);
     return { contact, created: false };
   }
-  const contact = await createContact(installationId, { ...properties, email });
+  const contact = await createContact(installationId, { ...createOnlyProperties, ...properties, email });
   return { contact, created: true };
 }
 

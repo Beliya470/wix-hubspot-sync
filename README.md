@@ -83,11 +83,12 @@ The dashboard is at `http://localhost:5173`.
 In your HubSpot developer app's Auth tab:
 
 1. Add `http://localhost:3000/auth/hubspot/callback` to the redirect URLs (or your ngrok URL for webhook testing).
-2. Under required scopes, add all four:
+2. Under required scopes, add all five:
    * `oauth`
    * `crm.objects.contacts.read`
    * `crm.objects.contacts.write`
    * `crm.schemas.contacts.read`
+   * `crm.schemas.contacts.write` (so the app can auto-create the custom UTM and form-attribution properties)
 3. Click **Save changes** at the bottom of the page. This is easy to miss.
 
 ## Demo path for a reviewer

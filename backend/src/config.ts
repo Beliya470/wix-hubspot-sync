@@ -28,7 +28,7 @@ const schema = z.object({
   HUBSPOT_REDIRECT_URI: z.string().url().default('http://localhost:3000/auth/hubspot/callback'),
   HUBSPOT_SCOPES: z
     .string()
-    .default('crm.objects.contacts.read crm.objects.contacts.write crm.schemas.contacts.read oauth'),
+    .default('crm.objects.contacts.read crm.objects.contacts.write crm.schemas.contacts.read crm.schemas.contacts.write oauth'),
   // EU portals use app-eu1.hubspot.com for the authorize endpoint. The token,
   // refresh, and CRM API calls still go to api.hubapi.com regardless of region.
   HUBSPOT_AUTH_BASE_URL: z.string().url().default('https://app.hubspot.com'),

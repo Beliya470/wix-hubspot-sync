@@ -12,6 +12,7 @@ import {
 import { revokeRefreshToken } from '../services/hubspotClient';
 import * as installationsRepo from '../repositories/installations';
 import * as tokensRepo from '../repositories/tokens';
+import { ensureCustomProperties, resetBootstrapState } from '../services/propertyBootstrap';
 import { safeEqual } from '../crypto';
 
 export const authRouter = Router();
@@ -98,6 +99,11 @@ authRouter.get('/hubspot/callback', async (req, res, next) => {
     });
 
     logger.info({ installationId: installation.id, portalId: meta.portalId }, 'hubspot connected');
+
+    // Provision the custom properties this app writes to so the first form
+    // submission does not race with property creation.
+    resetBootstrapState(installation.id);
+    await ensureCustomProperties(installation.id);
 
     const dest = new URL(config.DASHBOARD_URL);
     dest.searchParams.set('installation', installation.id);

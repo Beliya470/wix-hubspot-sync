@@ -6,6 +6,8 @@ build
 .env.*.local
 *.log
 boot.log
+ngrok.log
+debug.log
 .DS_Store
 .vscode
 .idea

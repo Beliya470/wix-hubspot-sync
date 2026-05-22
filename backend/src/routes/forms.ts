@@ -6,6 +6,7 @@ import * as installationsRepo from '../repositories/installations';
 import * as syncLog from '../repositories/syncLog';
 import * as hubspot from '../services/hubspotClient';
 import * as contactMapRepo from '../repositories/contactMap';
+import { ensureCustomProperties } from '../services/propertyBootstrap';
 import { stableHash } from '../crypto';
 
 export const formsRouter = Router();
@@ -29,8 +30,11 @@ const submissionBody = z.object({
   company: z.string().max(255).optional(),
   custom_fields: z.record(z.string(), z.string()).optional(),
   utm: utmSchema.optional(),
-  page_url: z.string().url().optional(),
-  referrer: z.string().url().optional(),
+  // page_url and referrer are arbitrary strings captured from the visitor's
+  // browser. Browsers and Wix forms do not guarantee RFC-3986 URLs, so we
+  // only enforce a sensible length cap.
+  page_url: z.string().max(2048).optional(),
+  referrer: z.string().max(2048).optional(),
   submitted_at: z.string().datetime().optional(),
   wix_contact_id: z.string().optional(),
 });
@@ -40,6 +44,11 @@ formsRouter.post('/submit', async (req, res, next) => {
     const body = submissionBody.parse(req.body);
     const installation = await installationsRepo.getByWixInstanceId(body.wix_instance_id);
     if (!installation) throw new HttpError(404, 'installation_not_found');
+
+    // Best-effort: make sure the custom properties this route writes to
+    // exist on the HubSpot portal. Falls back to filtering on the client
+    // side if the app is missing crm.schemas.contacts.write.
+    await ensureCustomProperties(installation.id);
 
     const properties: Record<string, string> = {
       email: body.email,
@@ -60,10 +69,14 @@ formsRouter.post('/submit', async (req, res, next) => {
       for (const [k, v] of Object.entries(body.custom_fields)) properties[k] = v;
     }
 
+    // Mark fresh leads as NEW so they show up correctly in HubSpot's lead
+    // pipeline. We only apply this on create so a repeat submission does not
+    // reset a lead that has already advanced through the funnel.
     const { contact, created } = await hubspot.upsertContactByEmail(
       installation.id,
       body.email,
       properties,
+      { hs_lead_status: 'NEW', lifecyclestage: 'lead' },
     );
 
     if (body.wix_contact_id) {

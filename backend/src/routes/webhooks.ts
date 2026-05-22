@@ -20,18 +20,51 @@ function jsonBody<T>(buf: Buffer): T {
 }
 
 function verifyHubspotSignature(req: import('express').Request, raw: Buffer): boolean {
-  // HubSpot v3 signature: base64(hmac_sha256(secret, method + uri + body + timestamp))
-  const sig = req.header('x-hubspot-signature-v3');
+  if (!config.HUBSPOT_WEBHOOK_SECRET) return false;
+  const v3Sig = req.header('x-hubspot-signature-v3');
+  const v1Sig = req.header('x-hubspot-signature');
   const ts = req.header('x-hubspot-request-timestamp');
-  if (!sig || !ts || !config.HUBSPOT_WEBHOOK_SECRET) return false;
-  // Reject anything older than 5 minutes to limit replay surface.
-  if (Math.abs(Date.now() - Number(ts)) > 5 * 60 * 1000) return false;
-  const proto = (req.header('x-forwarded-proto') ?? req.protocol) || 'https';
-  const host = req.header('x-forwarded-host') ?? req.header('host');
-  const url = `${proto}://${host}${req.originalUrl}`;
-  const base = `${req.method}${url}${raw.toString('utf8')}${ts}`;
-  const expected = hmacSha256Base64(config.HUBSPOT_WEBHOOK_SECRET, base);
-  return safeEqual(expected, sig);
+  const bodyString = raw.toString('utf8');
+
+  // v3: base64(hmac_sha256(secret, method + uri + body + timestamp))
+  if (v3Sig && ts) {
+    if (Math.abs(Date.now() - Number(ts)) <= 5 * 60 * 1000) {
+      const proto = (req.header('x-forwarded-proto') ?? req.protocol) || 'https';
+      const host = req.header('x-forwarded-host') ?? req.header('host');
+      const candidateUrls = [
+        `https://${host}${req.originalUrl}`,
+        `${proto}://${host}${req.originalUrl}`,
+        `http://${host}${req.originalUrl}`,
+      ];
+      for (const url of candidateUrls) {
+        const base = `${req.method}${url}${bodyString}${ts}`;
+        const expected = hmacSha256Base64(config.HUBSPOT_WEBHOOK_SECRET, base);
+        if (safeEqual(expected, v3Sig)) return true;
+      }
+    }
+  }
+
+  // v1: sha256(client_secret + body) hex. Used by legacy webhook subscriptions.
+  if (v1Sig) {
+    const expected = crypto
+      .createHash('sha256')
+      .update(config.HUBSPOT_WEBHOOK_SECRET + bodyString)
+      .digest('hex');
+    if (safeEqual(expected, v1Sig)) return true;
+  }
+
+  logger.warn(
+    {
+      has_v3: !!v3Sig,
+      has_v1: !!v1Sig,
+      ts,
+      body_length: raw.length,
+      method: req.method,
+      url: `${req.header('x-forwarded-proto')}://${req.header('x-forwarded-host')}${req.originalUrl}`,
+    },
+    'hubspot signature mismatch',
+  );
+  return false;
 }
 
 function verifyWixSignature(req: import('express').Request, raw: Buffer): boolean {
@@ -57,19 +90,19 @@ function verifyWixSignature(req: import('express').Request, raw: Buffer): boolea
   return safeEqual(expectedB64, provided) || safeEqual(expectedHex, provided);
 }
 
-const hubspotPayload = z.object({
-  // HubSpot delivers an array of events per request.
-  events: z
-    .array(
-      z.object({
-        subscriptionType: z.string(),
-        objectId: z.union([z.string(), z.number()]),
-        portalId: z.union([z.string(), z.number()]).optional(),
-        eventId: z.union([z.string(), z.number()]).optional(),
-      }),
-    )
-    .optional(),
+// HubSpot delivers either a bare array of events (the common legacy webhook
+// shape) or an object with an `events` field. Accept both.
+const hubspotEvent = z.object({
+  subscriptionType: z.string(),
+  objectId: z.union([z.string(), z.number()]),
+  portalId: z.union([z.string(), z.number()]).optional(),
+  eventId: z.union([z.string(), z.number()]).optional(),
 }).passthrough();
+
+const hubspotPayload = z.union([
+  z.array(hubspotEvent),
+  z.object({ events: z.array(hubspotEvent) }).passthrough(),
+]);
 
 webhooksRouter.post('/hubspot', rawJson, async (req, res, next) => {
   try {
@@ -77,7 +110,7 @@ webhooksRouter.post('/hubspot', rawJson, async (req, res, next) => {
       throw new HttpError(401, 'invalid_signature');
     }
     const parsed = hubspotPayload.parse(jsonBody<unknown>(req.body as Buffer));
-    const events = Array.isArray(parsed.events) ? parsed.events : Array.isArray(parsed) ? (parsed as never) : [];
+    const events = Array.isArray(parsed) ? parsed : parsed.events;
 
     const portalIds = new Set<string>();
     for (const e of events) if (e.portalId !== undefined) portalIds.add(String(e.portalId));
