@@ -1,0 +1,36 @@
+{
+  "name": "wix-hubspot-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "migrate": "node-pg-migrate -m migrations --envPath ../.env",
+    "migrate:up": "node-pg-migrate up -m migrations --envPath ../.env",
+    "migrate:down": "node-pg-migrate down -m migrations --envPath ../.env",
+    "seed": "tsx scripts/seed.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "helmet": "^8.0.0",
+    "pg": "^8.13.1",
+    "pino": "^9.5.0",
+    "pino-http": "^10.3.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.7.5",
+    "@types/pg": "^8.11.10",
+    "node-pg-migrate": "^7.6.1",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3"
+  }
+}

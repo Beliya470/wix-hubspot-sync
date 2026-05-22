@@ -1,0 +1,15 @@
+node_modules
+dist
+build
+.env
+.env.local
+.env.*.local
+*.log
+boot.log
+.DS_Store
+.vscode
+.idea
+coverage
+.pnp.*
+.yarn
+.cache
