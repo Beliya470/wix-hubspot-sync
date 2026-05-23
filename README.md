@@ -8,7 +8,7 @@ A self-hosted Wix app that connects a Wix site to HubSpot and keeps contacts in 
 
 | Purpose | URL |
 |---|---|
-| Wix install link (start here) | https://www.wix.com/app-market/test/e4e4d653-2748-42ec-bd6e-8c6f042c18e2 |
+| Wix install link (start here) | https://wix.to/yOJF7Ju |
 | Dashboard (loads inside Wix after install) | https://wix-hubspot-sync.netlify.app |
 | GitHub repository | https://github.com/Beliya470/wix-hubspot-sync |
 
@@ -39,7 +39,7 @@ The backend runs on Render's free tier, so the first request after a quiet perio
 
 The app is registered as a self-hosted Wix app (App ID `58ed4665-013d-4023-8e71-41c15fecd85c`) and published as a v1.0 draft. Anyone can install it on a Wix site they own using the share install link.
 
-**Wix share install link:** https://www.wix.com/app-market/test/e4e4d653-2748-42ec-bd6e-8c6f042c18e2
+**Wix share install link:** https://wix.to/yOJF7Ju
 
 Steps:
 
