@@ -1,5 +1,11 @@
 const TOKEN = import.meta.env.VITE_INTERNAL_API_TOKEN as string | undefined;
 
+// In dev the Vite proxy forwards /api and /auth to localhost:3000 so the
+// browser can hit the backend with relative paths. In production we deploy
+// the frontend and backend separately, so the dashboard needs the absolute
+// backend URL. Empty string keeps the dev behaviour.
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? '';
+
 if (!TOKEN) {
   // eslint-disable-next-line no-console
   console.warn('VITE_INTERNAL_API_TOKEN is not set. Dashboard requests will fail with 401.');
@@ -9,7 +15,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (TOKEN) headers.set('x-internal-token', TOKEN);
   if (init.body && !headers.has('content-type')) headers.set('content-type', 'application/json');
-  const res = await fetch(path, { ...init, headers });
+  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
   const text = await res.text();
   const data = text ? JSON.parse(text) : {};
   if (!res.ok) {
@@ -107,7 +113,7 @@ export interface FormSubmissionInput {
 // not require the internal token. We call it from the dashboard tester via
 // fetch() rather than the api helper so the wire shape matches production.
 export async function submitForm(body: FormSubmissionInput): Promise<{ contact_id: string; created: boolean }> {
-  const res = await fetch('/api/forms/submit', {
+  const res = await fetch(`${API_BASE}/api/forms/submit`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
@@ -121,5 +127,5 @@ export async function submitForm(body: FormSubmissionInput): Promise<{ contact_i
 // Builds the install URL. The browser is sent to the backend, which redirects
 // to HubSpot's consent screen.
 export function buildInstallUrl(wixInstanceId: string): string {
-  return `/auth/hubspot/install?wix_instance_id=${encodeURIComponent(wixInstanceId)}`;
+  return `${API_BASE}/auth/hubspot/install?wix_instance_id=${encodeURIComponent(wixInstanceId)}`;
 }
