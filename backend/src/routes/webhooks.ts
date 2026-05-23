@@ -248,11 +248,19 @@ webhooksRouter.post('/wix', rawJson, async (req, res, next) => {
       throw new HttpError(400, 'missing_contact_id');
     }
 
+    // The webhook envelope carries the complete contact entity for create
+    // and update events. Pull it out and pass it to the sync engine so we
+    // do not need to call back into Wix's API for the data we already have.
+    const snapshot =
+      (nested(event, 'createdEvent', 'entity') as import('../services/wixClient').WixContact | undefined) ??
+      (nested(event, 'updatedEvent', 'entity') as import('../services/wixClient').WixContact | undefined);
+
     res.status(202).json({ accepted: true });
 
     await syncEngine.handle({
       kind: 'wix_contact_changed',
       wixContactId: contactId,
+      wixContactSnapshot: snapshot,
       installationId: installation.id,
       origin: 'wix',
       correlationId: req.correlationId,

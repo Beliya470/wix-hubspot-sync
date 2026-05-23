@@ -24,7 +24,13 @@ interface CommonInput {
 }
 
 export type SyncEvent =
-  | (CommonInput & { kind: 'wix_contact_changed'; wixContactId: string })
+  | (CommonInput & {
+      kind: 'wix_contact_changed';
+      wixContactId: string;
+      // Optional inline contact snapshot from the webhook payload. When
+      // present we skip the Wix API fetch and use this data directly.
+      wixContactSnapshot?: import('./wixClient').WixContact;
+    })
   | (CommonInput & { kind: 'hubspot_contact_changed'; hubspotContactId: string });
 
 export interface SyncResult {
@@ -46,7 +52,7 @@ export async function handle(event: SyncEvent): Promise<SyncResult> {
   logger.info({ ctx, kind: event.kind }, 'sync event received');
   try {
     if (event.kind === 'wix_contact_changed') {
-      return await syncWixToHubspot(ctx, event.wixContactId);
+      return await syncWixToHubspot(ctx, event.wixContactId, event.wixContactSnapshot);
     }
     return await syncHubspotToWix(ctx, event.hubspotContactId);
   } catch (err) {
@@ -63,18 +69,26 @@ export async function handle(event: SyncEvent): Promise<SyncResult> {
   }
 }
 
-async function syncWixToHubspot(ctx: SyncContext, wixContactId: string): Promise<SyncResult> {
+async function syncWixToHubspot(
+  ctx: SyncContext,
+  wixContactId: string,
+  snapshot?: import('./wixClient').WixContact,
+): Promise<SyncResult> {
   const direction: SyncDirection = 'wix_to_hubspot';
 
   if (await isLoopEcho({ installationId: ctx.installationId, origin: ctx.origin, wixContactId })) {
     return await skip(ctx, direction, 'loop_echo', { wixContactId });
   }
 
-  // Look up the corresponding installation's Wix instance id. We accept it
-  // via the installation record so callers don't have to know both.
-  const { wixInstanceId } = await loadInstanceId(ctx.installationId);
-
-  const wixContact = await wix.getContact(wixInstanceId, wixContactId);
+  // If the caller (a Wix webhook) already passed the full contact snapshot
+  // in the event, use it directly. Wix webhooks include the entire contact
+  // entity in createdEvent.entity / updatedEvent.entity, so the extra API
+  // round-trip is unnecessary and avoids the Wix outbound auth path.
+  let wixContact: import('./wixClient').WixContact | null = snapshot ?? null;
+  if (!wixContact) {
+    const { wixInstanceId } = await loadInstanceId(ctx.installationId);
+    wixContact = await wix.getContact(wixInstanceId, wixContactId);
+  }
   if (!wixContact) {
     return await skip(ctx, direction, 'wix_contact_not_found', { wixContactId });
   }
