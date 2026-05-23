@@ -238,6 +238,7 @@ webhooksRouter.post('/wix', rawJson, async (req, res, next) => {
       pick(event, 'entityId') ??
       (nested(event, 'createdEvent', 'entity', 'id') as string | undefined) ??
       (nested(event, 'updatedEvent', 'entity', 'id') as string | undefined) ??
+      (nested(event, 'updatedEvent', 'currentEntity', 'id') as string | undefined) ??
       (nested(event, 'actionEvent', 'body', 'contact', 'id') as string | undefined) ??
       (nested(event, 'actionEvent', 'body', 'contactId') as string | undefined) ??
       (nested(event, 'data', 'contactId') as string | undefined) ??
@@ -251,8 +252,13 @@ webhooksRouter.post('/wix', rawJson, async (req, res, next) => {
     // The webhook envelope carries the complete contact entity for create
     // and update events. Pull it out and pass it to the sync engine so we
     // do not need to call back into Wix's API for the data we already have.
+    // Wix delivers the contact entity under different keys depending on the
+    // event type: createdEvent.entity for Created, updatedEvent.currentEntity
+    // for Updated. We accept both so the sync engine never needs to call back
+    // into the Wix API for data that arrived in the webhook itself.
     const snapshot =
       (nested(event, 'createdEvent', 'entity') as import('../services/wixClient').WixContact | undefined) ??
+      (nested(event, 'updatedEvent', 'currentEntity') as import('../services/wixClient').WixContact | undefined) ??
       (nested(event, 'updatedEvent', 'entity') as import('../services/wixClient').WixContact | undefined);
 
     res.status(202).json({ accepted: true });
