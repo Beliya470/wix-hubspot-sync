@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { logger } from '../logger';
 import * as mappingsRepo from '../repositories/mappings';
 import * as contactMapRepo from '../repositories/contactMap';
+import * as installationsRepo from '../repositories/installations';
 import * as syncLog from '../repositories/syncLog';
 import * as hubspot from './hubspotClient';
 import * as wix from './wixClient';
@@ -320,9 +321,7 @@ async function skip(
 }
 
 async function loadInstanceId(installationId: string): Promise<{ wixInstanceId: string }> {
-  // Local import to avoid a top-level cycle with repositories.
-  const { getById } = await import('../repositories/installations');
-  const installation = await getById(installationId);
+  const installation = await installationsRepo.getById(installationId);
   if (!installation) throw new Error(`installation not found: ${installationId}`);
   return { wixInstanceId: installation.wix_instance_id };
 }
