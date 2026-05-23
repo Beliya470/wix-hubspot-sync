@@ -5,7 +5,7 @@
   "type": "commonjs",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/index.js --packages=external",
     "start": "node dist/index.js",
     "migrate": "node-pg-migrate -m migrations",
     "migrate:up": "node-pg-migrate up -m migrations",
@@ -29,6 +29,7 @@
     "@types/express": "^4.17.21",
     "@types/node": "^22.7.5",
     "@types/pg": "^8.11.10",
+    "esbuild": "^0.28.0",
     "node-pg-migrate": "^7.6.1",
     "tsx": "^4.19.1",
     "typescript": "5.4.5"
