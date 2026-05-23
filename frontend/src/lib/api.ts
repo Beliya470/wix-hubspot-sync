@@ -129,3 +129,25 @@ export async function submitForm(body: FormSubmissionInput): Promise<{ contact_i
 export function buildInstallUrl(wixInstanceId: string): string {
   return `${API_BASE}/auth/hubspot/install?wix_instance_id=${encodeURIComponent(wixInstanceId)}`;
 }
+
+export interface WixInstallResult {
+  installation_id: string;
+  wix_instance_id: string;
+  hubspot_connected: boolean;
+  permissions: string;
+}
+
+// Called when the dashboard is loaded inside Wix's iframe. The signed
+// `instance` JWT identifies which Wix site we're running for; the backend
+// verifies it and creates or updates the installation row.
+export async function registerWixInstall(instance: string): Promise<WixInstallResult> {
+  const res = await fetch(`${API_BASE}/api/wix/install`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ instance }),
+  });
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!res.ok) throw new Error(data?.error ?? `wix_install_failed_${res.status}`);
+  return data;
+}

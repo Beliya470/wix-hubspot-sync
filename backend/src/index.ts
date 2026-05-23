@@ -14,6 +14,7 @@ import { syncRouter } from './routes/sync';
 import { mappingsRouter } from './routes/mappings';
 import { formsRouter } from './routes/forms';
 import { installationsRouter } from './routes/installations';
+import { wixAppRouter } from './routes/wixApp';
 
 const app = express();
 
@@ -49,6 +50,7 @@ app.use('/api/installations', installationsRouter);
 app.use('/api/mappings', mappingsRouter);
 app.use('/api/sync', syncRouter);
 app.use('/api/forms', formsRouter);
+app.use('/api/wix', wixAppRouter);
 
 app.use(notFound);
 app.use(errorHandler);
