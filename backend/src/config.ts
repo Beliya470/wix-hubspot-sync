@@ -41,6 +41,8 @@ const schema = z.object({
   WIX_APP_ID: z.string().optional(),
   WIX_APP_SECRET: z.string().optional(),
   WIX_WEBHOOK_SECRET: z.string().optional(),
+  // RS256 public key Wix uses to sign webhook JWTs. Multi-line PEM block.
+  WIX_WEBHOOK_PUBLIC_KEY: z.string().optional(),
 
   INTERNAL_API_TOKEN: z.string().min(16, 'INTERNAL_API_TOKEN must be at least 16 chars'),
 });

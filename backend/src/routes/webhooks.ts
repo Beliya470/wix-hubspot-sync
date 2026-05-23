@@ -1,5 +1,6 @@
 import { Router, raw } from 'express';
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { config } from '../config';
 import { logger } from '../logger';
@@ -67,27 +68,43 @@ function verifyHubspotSignature(req: import('express').Request, raw: Buffer): bo
   return false;
 }
 
-function verifyWixSignature(req: import('express').Request, raw: Buffer): boolean {
-  // Wix sends a JWT signed with the app secret in `digest`. For a deeper
-  // implementation we'd verify the JWT properly. Here we accept either a JWT
-  // (3 dot-separated segments) or a raw HMAC-SHA256 hex/base64 of the body,
-  // because both shapes appear across Wix surfaces.
-  const provided = req.header('x-wix-webhook-signature') ?? req.header('digest');
-  if (!provided || !config.WIX_WEBHOOK_SECRET) return false;
-
-  if (provided.includes('.')) {
-    const parts = provided.split('.');
-    if (parts.length !== 3) return false;
-    const data = `${parts[0]}.${parts[1]}`;
-    const expected = crypto
-      .createHmac('sha256', config.WIX_WEBHOOK_SECRET)
-      .update(data)
-      .digest('base64url');
-    return safeEqual(expected, parts[2]!);
+// Wix delivers a JWT signed with RS256 using their private key. We verify it
+// with the public key configured for the app (WIX_WEBHOOK_PUBLIC_KEY). When
+// the JWT is the request body itself, we decode it and return the inner
+// payload; the route handler reads `instanceId` and `data.contactId` from it.
+function verifyAndDecodeWixWebhook(raw: Buffer): { payload: unknown } | null {
+  if (!config.WIX_WEBHOOK_PUBLIC_KEY) {
+    logger.warn('WIX_WEBHOOK_PUBLIC_KEY not set; rejecting wix webhook');
+    return null;
   }
-  const expectedB64 = hmacSha256Base64(config.WIX_WEBHOOK_SECRET, raw);
-  const expectedHex = crypto.createHmac('sha256', config.WIX_WEBHOOK_SECRET).update(raw).digest('hex');
-  return safeEqual(expectedB64, provided) || safeEqual(expectedHex, provided);
+  const token = raw.toString('utf8').trim();
+  // The Wix webhook body is the JWT itself, three dot-separated base64url
+  // segments. Anything that does not match that shape is rejected before we
+  // hand it to the JWT library.
+  if (token.split('.').length !== 3) return null;
+  try {
+    const decoded = jwt.verify(token, config.WIX_WEBHOOK_PUBLIC_KEY, {
+      algorithms: ['RS256'],
+    });
+    // Wix wraps the actual event in a `data` field that is itself a JSON
+    // string. Unwrap one level so the route handler can read the contact id
+    // and instance id without knowing about the wrapping.
+    if (typeof decoded === 'object' && decoded !== null && 'data' in decoded) {
+      const inner = (decoded as { data: unknown }).data;
+      if (typeof inner === 'string') {
+        try {
+          return { payload: JSON.parse(inner) };
+        } catch {
+          return { payload: inner };
+        }
+      }
+      return { payload: inner };
+    }
+    return { payload: decoded };
+  } catch (err) {
+    logger.warn({ err }, 'wix webhook jwt verification failed');
+    return null;
+  }
 }
 
 // HubSpot delivers either a bare array of events (the common legacy webhook
@@ -142,6 +159,22 @@ webhooksRouter.post('/hubspot', rawJson, async (req, res, next) => {
 
 const wixPayload = z.object({
   instanceId: z.string().optional(),
+  identityType: z.string().optional(),
+  identityId: z.string().optional(),
+  eventType: z.string().optional(),
+  actionEvent: z.object({
+    body: z.object({
+      contact: z.object({ id: z.string() }).passthrough().optional(),
+      contactId: z.string().optional(),
+    }).passthrough(),
+  }).passthrough().optional(),
+  entity: z.union([
+    z.string(),
+    z.object({
+      _id: z.string().optional(),
+      id: z.string().optional(),
+    }).passthrough(),
+  ]).optional(),
   data: z
     .object({
       contactId: z.string().optional(),
@@ -149,7 +182,6 @@ const wixPayload = z.object({
     })
     .passthrough()
     .optional(),
-  eventType: z.string().optional(),
 }).passthrough();
 
 // Wix's developer dashboard pings the webhook URL with GET when you save a
@@ -161,19 +193,35 @@ webhooksRouter.get('/wix', (_req, res) => {
 
 webhooksRouter.post('/wix', rawJson, async (req, res, next) => {
   try {
-    if (!verifyWixSignature(req, req.body as Buffer)) {
+    const verified = verifyAndDecodeWixWebhook(req.body as Buffer);
+    if (!verified) {
       throw new HttpError(401, 'invalid_signature');
     }
-    const parsed = wixPayload.parse(jsonBody<unknown>(req.body as Buffer));
+    const parsed = wixPayload.parse(verified.payload);
+
     const wixInstanceId = parsed.instanceId;
     if (!wixInstanceId) throw new HttpError(400, 'missing_instance_id');
 
     const installation = await installationsRepo.getByWixInstanceId(wixInstanceId);
     if (!installation) {
-      throw new HttpError(404, 'unknown_installation');
+      throw new HttpError(404, 'unknown_installation', { wixInstanceId });
     }
 
-    const contactId = parsed.data?.contactId ?? parsed.data?.contact?.id;
+    let contactId: string | undefined =
+      parsed.actionEvent?.body?.contact?.id ??
+      parsed.actionEvent?.body?.contactId ??
+      parsed.data?.contactId ??
+      parsed.data?.contact?.id;
+    if (!contactId && typeof parsed.entity === 'string') {
+      try {
+        const entity = JSON.parse(parsed.entity) as { id?: string; _id?: string };
+        contactId = entity.id ?? entity._id;
+      } catch {
+        // ignore parse errors; we'll fall through to validation
+      }
+    } else if (!contactId && parsed.entity && typeof parsed.entity === 'object') {
+      contactId = parsed.entity.id ?? parsed.entity._id;
+    }
     if (!contactId) throw new HttpError(400, 'missing_contact_id');
 
     res.status(202).json({ accepted: true });
