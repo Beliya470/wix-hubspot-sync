@@ -35,16 +35,18 @@ async function getInstanceToken(instanceId: string): Promise<WixToken> {
       'Wix app credentials missing. Set WIX_APP_ID and WIX_APP_SECRET in .env to enable outbound Wix calls.',
     );
   }
-  const body = new URLSearchParams({
-    grant_type: 'refresh_token',
-    client_id: config.WIX_APP_ID,
-    client_secret: config.WIX_APP_SECRET,
-    refresh_token: instanceId,
-  });
+  // Wix's /oauth/access endpoint requires JSON, not form-encoded. The
+  // instance id from the dashboard JWT acts as the refresh token for
+  // self-hosted apps.
   const { data } = await axios.post<{ access_token: string; refresh_token: string }>(
     `${WIX_API}/oauth/access`,
-    body.toString(),
-    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
+    {
+      grant_type: 'refresh_token',
+      client_id: config.WIX_APP_ID,
+      client_secret: config.WIX_APP_SECRET,
+      refresh_token: instanceId,
+    },
+    { headers: { 'Content-Type': 'application/json' } },
   );
   return { accessToken: data.access_token, refreshToken: data.refresh_token };
 }

@@ -67,12 +67,15 @@ export function SyncLogView({ installationId }: Props) {
   const [entries, setEntries] = useState<SyncLogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
 
   function refresh() {
+    setRefreshing(true);
     api.syncLog(installationId)
-      .then((r) => { setEntries(r.entries); setError(null); })
+      .then((r) => { setEntries(r.entries); setError(null); setLastRefreshedAt(new Date()); })
       .catch((e) => setError(e instanceof Error ? e.message : 'Could not load activity'))
-      .finally(() => setLoaded(true));
+      .finally(() => { setLoaded(true); setRefreshing(false); });
   }
 
   useEffect(() => {
@@ -85,7 +88,16 @@ export function SyncLogView({ installationId }: Props) {
     <div className="card">
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h2 style={{ margin: 0 }}>Activity</h2>
-        <button className="button secondary" onClick={refresh}>Refresh</button>
+        <div className="row" style={{ gap: 12 }}>
+          {lastRefreshedAt && (
+            <span style={{ color: '#7b8794', fontSize: 12 }}>
+              Updated {lastRefreshedAt.toLocaleTimeString()}
+            </span>
+          )}
+          <button className="button secondary" onClick={refresh} disabled={refreshing}>
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
       </div>
       <p style={{ marginTop: 8, marginBottom: 12, color: '#52606d', fontSize: 13 }}>
         A record of every contact change synced between Wix and HubSpot.
