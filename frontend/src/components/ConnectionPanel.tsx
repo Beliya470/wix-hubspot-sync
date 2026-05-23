@@ -14,15 +14,25 @@ export function ConnectionPanel({ installations, selectedId, onSelect, onChanged
   const [error, setError] = useState<string | null>(null);
 
   const selected = installations.find((i) => i.id === selectedId) ?? null;
+  const hubspotConnected = selected?.connected ?? false;
 
-  function startInstall() {
+  function connectHubspot() {
     setError(null);
-    const id = instanceId.trim();
+    // If a Wix installation is already selected (typical when launched from
+    // inside the Wix dashboard), connect HubSpot for that instance. Otherwise
+    // fall back to the manual entry input.
+    const id = selected?.wix_instance_id ?? instanceId.trim();
     if (!id) {
       setError('Enter a Wix instance id to begin installation.');
       return;
     }
-    window.location.href = buildInstallUrl(id);
+    // Replace the top window so HubSpot's consent screen is not blocked by
+    // iframe-embedding restrictions when the dashboard runs inside Wix.
+    if (window.top && window.top !== window) {
+      window.top.location.href = buildInstallUrl(id);
+    } else {
+      window.location.href = buildInstallUrl(id);
+    }
   }
 
   async function disconnect() {
@@ -33,7 +43,7 @@ export function ConnectionPanel({ installations, selectedId, onSelect, onChanged
       await api.disconnect(selected.id);
       onChanged();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'disconnect_failed');
+      setError(e instanceof Error ? e.message : 'Could not disconnect HubSpot');
     } finally {
       setDisconnecting(false);
     }
@@ -62,29 +72,33 @@ export function ConnectionPanel({ installations, selectedId, onSelect, onChanged
           </select>
         </label>
         {selected && (
-          <span className={`status-pill ${pillClass(selected.status, selected.connected)}`}>
-            {selected.connected ? 'Connected' : selected.status}
+          <span className={`status-pill ${pillClass(selected.status, hubspotConnected)}`}>
+            {hubspotConnected ? 'Connected to HubSpot' : 'Wix connected, HubSpot pending'}
           </span>
         )}
       </div>
 
       <div className="row">
-        <input
-          placeholder="Wix instance id"
-          value={instanceId}
-          onChange={(e) => setInstanceId(e.target.value)}
-          style={{ minWidth: 320 }}
-        />
-        <button className="button" onClick={startInstall}>
-          Connect HubSpot
-        </button>
-        {selected?.connected && (
+        {!selected && (
+          <input
+            placeholder="Wix instance id"
+            value={instanceId}
+            onChange={(e) => setInstanceId(e.target.value)}
+            style={{ minWidth: 320 }}
+          />
+        )}
+        {!hubspotConnected && (
+          <button className="button" onClick={connectHubspot}>
+            Connect HubSpot
+          </button>
+        )}
+        {hubspotConnected && (
           <button
             className="button danger"
             onClick={disconnect}
             disabled={disconnecting}
           >
-            {disconnecting ? 'Disconnecting…' : 'Disconnect'}
+            {disconnecting ? 'Disconnecting...' : 'Disconnect HubSpot'}
           </button>
         )}
       </div>
