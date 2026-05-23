@@ -15,15 +15,19 @@ The backend runs on Render's free tier, so the first request after a quiet perio
 
 ## How a reviewer installs and tests the app
 
-The app is registered as a self-hosted Wix app (App ID `58ed4665-013d-4023-8e71-41c15fecd85c`). It is published as a draft and can be installed on any Wix site you own.
+The app is registered as a self-hosted Wix app (App ID `58ed4665-013d-4023-8e71-41c15fecd85c`) and published as a v1.0 draft. Anyone can install it on a Wix site they own using the share install link.
 
-1. Sign into your Wix account at https://manage.wix.com (or create one for free).
-2. Open the install link the developer shares with you (visible in the Wix Developer Center under Distribute, "Share install link"). Click Install.
-3. Wix walks you through the consent screen for the requested permissions (Read Contacts (PII), Manage Contacts).
-4. After install, Wix opens your site's dashboard with the HubSpot Sync app loaded as a page in the sidebar.
-5. Click the HubSpot Sync app. The app's dashboard loads inside Wix's UI.
-6. Click Connect HubSpot. You will be sent to HubSpot's consent screen. Sign in to your own HubSpot account (or create a free one), grant the 5 requested scopes, click Connect app.
-7. After consent you land back on the dashboard, this time with both Wix and HubSpot connected.
+**Wix share install link:** https://www.wix.com/app-market/test/e4e4d653-2748-42ec-bd6e-8c6f042c18e2
+
+Steps:
+
+1. Sign into your Wix account at https://manage.wix.com (or create a free one).
+2. Open the share install link above. Click Install and pick the Wix site to install it on.
+3. Wix shows the consent screen for the requested permissions (Read Contacts (PII), Manage Contacts). Click Add to Site.
+4. After install, Wix opens your site's dashboard with the HubSpot Sync app added as a page in the sidebar.
+5. Click HubSpot Sync in the Wix dashboard sidebar. The app's interface loads inside Wix's UI.
+6. Click Connect HubSpot. You will be sent to HubSpot's consent screen (this leaves the Wix iframe because HubSpot blocks iframe embedding). Sign in to your own HubSpot account (or create a free one), grant the 5 requested scopes, click Connect app.
+7. After HubSpot consent you land back on the dashboard at https://wix-hubspot-sync.netlify.app/, this time with both Wix and HubSpot connected.
 
 You can now exercise every assignment requirement against your own Wix and HubSpot data.
 
