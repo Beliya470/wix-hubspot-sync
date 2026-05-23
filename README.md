@@ -2,60 +2,106 @@
 
 A self-hosted Wix app that connects a Wix site to HubSpot and keeps contacts in sync both ways. Wix form submissions are pushed into HubSpot with marketing attribution. A small dashboard lets the site owner connect or disconnect HubSpot, decide which fields flow between the two systems, and watch every sync event as it happens.
 
-## What's in the repo
+## Live demo
+
+| Piece | URL |
+|---|---|
+| Frontend (dashboard) | https://wix-hubspot-sync.netlify.app |
+| Backend (API + webhooks) | https://wix-hubspot-sync-backend.onrender.com |
+| GitHub repository | https://github.com/Beliya470/wix-hubspot-sync |
+| Database | Neon Postgres (managed) |
+
+The backend runs on Render's free tier, so the first request after a quiet period takes about 50 seconds to wake the instance. Subsequent requests are fast.
+
+## How a reviewer installs and tests the app
+
+The app is registered as a self-hosted Wix app (App ID `58ed4665-013d-4023-8e71-41c15fecd85c`). It is published as a draft and can be installed on any Wix site you own.
+
+1. Sign into your Wix account at https://manage.wix.com (or create one for free).
+2. Open the install link the developer shares with you (visible in the Wix Developer Center under Distribute, "Share install link"). Click Install.
+3. Wix walks you through the consent screen for the requested permissions (Read Contacts (PII), Manage Contacts).
+4. After install, Wix opens your site's dashboard with the HubSpot Sync app loaded as a page in the sidebar.
+5. Click the HubSpot Sync app. The app's dashboard loads inside Wix's UI.
+6. Click Connect HubSpot. You will be sent to HubSpot's consent screen. Sign in to your own HubSpot account (or create a free one), grant the 5 requested scopes, click Connect app.
+7. After consent you land back on the dashboard, this time with both Wix and HubSpot connected.
+
+You can now exercise every assignment requirement against your own Wix and HubSpot data.
+
+## Acceptance criteria walkthrough
+
+Each row maps an assignment requirement to where it is implemented and how to demo it.
+
+| Requirement | Where in code | How to demo |
+|---|---|---|
+| OAuth 2.0 to HubSpot, no API keys in browser | `backend/src/routes/auth.ts`, `backend/src/services/tokenService.ts` | Connect HubSpot from the dashboard. Tokens are exchanged server-side and never touch the browser. |
+| Tokens encrypted at rest with rotation | `backend/src/crypto.ts`, `backend/src/repositories/tokens.ts` | Inspect the `hubspot_tokens` table. Access and refresh tokens are stored as AES-256-GCM ciphertext with IV and auth tag in separate columns. Refresh runs automatically 60 seconds before expiry. |
+| Least privilege scopes | `HUBSPOT_SCOPES` env var | Five scopes only: `oauth`, `crm.objects.contacts.read`, `crm.objects.contacts.write`, `crm.schemas.contacts.read`, `crm.schemas.contacts.write`. |
+| Safe logging (no PII or tokens) | `backend/src/logger.ts` | pino redaction strips `authorization`, `cookie`, `email`, `phone`, `firstname`, `lastname`, all token field names. |
+| User can connect / disconnect from the dashboard | `frontend/src/components/ConnectionPanel.tsx`, `backend/src/routes/auth.ts` | The Connection card has a Connect HubSpot button and a Disconnect button once linked. Disconnect revokes the HubSpot refresh token and deletes the encrypted record. |
+| Field mapping table UI | `frontend/src/components/MappingTable.tsx`, `backend/src/routes/mappings.ts` | Add rows to the mapping table picking Wix field, HubSpot property, direction, and transform. Save persists to `field_mappings` and reloads correctly. |
+| Duplicate validation | `MappingTable.tsx` `validateRows`, `routes/mappings.ts` `putBody` | Client and server both reject a Wix field mapped twice. Same HubSpot property is allowed twice only when the two rows map opposite directions. |
+| Bi-directional contact sync (create + update) | `backend/src/services/syncEngine.ts` | Create or edit a contact in Wix CRM. Within seconds it appears in HubSpot. Edit the same contact in HubSpot. Within seconds the change flows back to Wix. |
+| ID mapping Wix ↔ HubSpot | `backend/src/repositories/contactMap.ts`, migration `1700000000004_create-contact-id-map.js` | One-to-one unique constraints in both directions. Engine consults this table before every write. |
+| Loop prevention (origin tag + dedupe window) | `backend/src/services/loopPrevention.ts` and `sync_log` table | Edit a contact in Wix. The engine writes to HubSpot, logs `wix_to_hubspot` success. HubSpot then fires `contact.propertyChange`. Within the 30-second dedupe window the engine recognises this as the echo of its own write and logs `Skipped, mirrored a change we just made`. |
+| Idempotency check | `syncEngine.ts` `valuesIdentical` | Submit the same lead twice with identical fields. The second run reports `Skipped, no field values changed` because the mapped property set is byte-equal. |
+| Conflict resolution (last-updated-wins) | `syncEngine.ts` `resolveConflict` | Both records carry an `updatedAt`. If the target is strictly newer, the engine skips with reason `the destination already has newer data`. |
+| Form submission to HubSpot with UTM | `backend/src/routes/forms.ts` | Submit a lead from the dashboard's Capture a lead card with example UTM values. The contact appears in HubSpot under the Wix Sync Attribution property group with `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, `last_form_page_url`, `last_form_referrer`, `last_form_submitted_at` populated. |
+| Fresh lead status | `routes/forms.ts` `upsertContactByEmail` | New leads land in HubSpot with `Lead status = New` and `Lifecycle stage = Lead`. Existing leads are not reset on repeat submissions. |
+| Wix webhook signature verification | `backend/src/routes/webhooks.ts` `verifyAndDecodeWixWebhook` | Webhook delivery is a Wix-signed RS256 JWT. We verify with the app's public key. Forged or replayed requests get 401. |
+| HubSpot webhook signature verification | `backend/src/routes/webhooks.ts` `verifyHubspotSignature` | Supports both v3 HMAC and legacy v1 signature schemes; v3 reconstruction tolerates host header variation through ngrok and Render's proxy. |
+
+## API plan
+
+| Feature | APIs used |
+|---|---|
+| Wix → HubSpot contact sync | Wix CRM Contact Created / Updated webhooks (real-time inbound); Wix Contacts v4 REST for outbound reads when syncing the other direction. |
+| HubSpot → Wix contact sync | HubSpot Webhooks v3 with subscriptions to `contact.creation` and `contact.propertyChange`; HubSpot CRM Contacts v3 API to read and write contact properties. |
+| Form lead capture | Direct POST from a Wix page (Velo or custom HTML element) to our `/api/forms/submit` endpoint; that route then calls HubSpot CRM Contacts API and HubSpot Properties API (to provision the UTM and form-attribution custom properties on first use). |
+| Property mapping configuration | HubSpot Properties API `/crm/v3/properties/contacts` to enumerate available properties for the mapping UI; our own `field_mappings` table to persist the user's choices. |
+
+## Database
+
+Five tables, all migrated via `node-pg-migrate`.
 
 ```
-backend/    Express API: OAuth, sync engine, webhooks, form capture
-frontend/   React dashboard
-docs/       Operational guides (ngrok setup)
-docker-compose.yml   Postgres for local development
-DESIGN.md   Architecture, ERD, sync engine and loop prevention details, API plan
+installations (1) --- (1) hubspot_tokens
+              (1) --- (N) field_mappings
+              (1) --- (N) contact_id_map
+              (1) --- (N) sync_log
 ```
 
-## What you need
+| Table | Purpose |
+|---|---|
+| `installations` | One row per Wix instance plus the HubSpot portal it is linked to. |
+| `hubspot_tokens` | AES-256-GCM encrypted HubSpot access and refresh tokens, IV and auth tag in separate columns. |
+| `field_mappings` | User-configurable Wix field to HubSpot property map, with direction and optional transform. |
+| `contact_id_map` | Stable Wix contact id ↔ HubSpot contact id pairs, with one-to-one constraints in each direction. |
+| `sync_log` | Append-only audit ledger. Origin, direction, correlation id, payload hash, status. Powers the dedupe window query. |
 
-* Node.js 20 or newer
-* npm 10 or newer
-* Either Docker Desktop (to use the bundled Postgres) or a Postgres 15 or newer instance you can reach over the network
-* A HubSpot developer account (free) and an app set up in it
-* A Wix developer account if you intend to wire up the Wix side end to end
+See `DESIGN.md` for the full architecture, ERD, OAuth flow, and the four-layer loop-prevention reasoning.
 
-## Setup
+## Local development
 
-### 1. Configuration
-
-Copy the example env files:
+Prerequisites: Node 20+, npm 10+, Postgres 15+ or Docker Desktop.
 
 ```
 cp .env.example .env
 cp frontend/.env.example frontend/.env
 ```
 
-Fill in the values listed in `.env`. The required ones are:
-
-* `DATABASE_URL` (default works with docker-compose)
-* `ENCRYPTION_KEY` (32-byte hex, generate it once and keep it stable)
-* `INTERNAL_API_TOKEN` (any long random string, paste the same value into `frontend/.env`)
-* `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET`, `HUBSPOT_REDIRECT_URI` from your HubSpot app's Auth tab
-* `HUBSPOT_AUTH_BASE_URL` is `https://app.hubspot.com` for US portals or `https://app-eu1.hubspot.com` for EU portals. Check your HubSpot account's data centre
-
-Generate the two random keys with:
+Fill in `.env` with values from your HubSpot and Wix apps. Generate the encryption key and internal API token with:
 
 ```
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-### 2. Database
-
-If you have Docker:
+Start Postgres:
 
 ```
 docker compose up -d postgres
 ```
 
-If you do not, install Postgres locally (for example with winget on Windows: `winget install PostgreSQL.PostgreSQL.16`) and adjust `DATABASE_URL` to match the username, password, host, and database you set during install.
-
-### 3. Backend
+Install and migrate:
 
 ```
 cd backend
@@ -63,10 +109,6 @@ npm install
 npm run migrate up
 npm run dev
 ```
-
-You should see a JSON log line ending in `"msg":"backend listening"` and `http://localhost:3000/health` returns `{"status":"ok"}`.
-
-### 4. Frontend
 
 In a second terminal:
 
@@ -76,92 +118,68 @@ npm install
 npm run dev
 ```
 
-The dashboard is at `http://localhost:5173`.
+Dashboard at http://localhost:5173, backend at http://localhost:3000.
 
-## HubSpot app configuration
+For webhook testing in local development, see `docs/NGROK.md`.
 
-In your HubSpot developer app's Auth tab:
-
-1. Add `http://localhost:3000/auth/hubspot/callback` to the redirect URLs (or your ngrok URL for webhook testing).
-2. Under required scopes, add all five:
-   * `oauth`
-   * `crm.objects.contacts.read`
-   * `crm.objects.contacts.write`
-   * `crm.schemas.contacts.read`
-   * `crm.schemas.contacts.write` (so the app can auto-create the custom UTM and form-attribution properties)
-3. Click **Save changes** at the bottom of the page. This is easy to miss.
-
-## Demo path for a reviewer
-
-1. Open `http://localhost:5173`.
-2. In the Connection card, type any string as a Wix instance id (for example `demo-1`) and click **Connect HubSpot**.
-3. Accept the consent screen in HubSpot. You will be redirected back to the dashboard and the status will switch to **Connected**.
-4. In the Field mapping card, the table loads HubSpot's actual contact properties. Add a few rows mapping Wix fields to HubSpot properties, choose directions, and click **Save mapping**. Refresh the page to confirm the mappings persist.
-5. In the Capture a lead card, click **Try with example data**, then **Submit lead**. The lead is created in HubSpot within a couple of seconds. You will see a new row in the Activity card and a new contact in HubSpot with the UTM properties populated.
-6. Submit the same lead again. The Activity card now logs the second attempt as **Skipped** with the reason "no field values changed". This is the idempotency check stopping a ping-pong loop.
-7. In the Resync a contact card, paste a HubSpot contact id and click **Sync now**. The Activity card records the run.
-8. Click **Disconnect** in the Connection card to revoke the HubSpot refresh token and clear the stored credentials.
-
-## Optional: live webhooks via ngrok
-
-Webhooks let HubSpot tell the app the moment a contact changes inside HubSpot. To wire them up locally, see `docs/NGROK.md`. The short version:
-
-1. `ngrok http 3000` exposes the local backend at an HTTPS URL.
-2. In the HubSpot app's Webhooks tab, set the target URL to `https://<ngrok>/webhooks/hubspot` and subscribe to `contact.creation` and `contact.propertyChange`.
-3. Paste the webhook signing secret into `HUBSPOT_WEBHOOK_SECRET` in `.env` and restart the backend.
-
-## A note on the Wix side
-
-The code path for outbound Wix calls (in `backend/src/services/wixClient.ts`) is implemented against the Wix Contacts v4 REST API and uses the same OAuth refresh pattern as HubSpot. We did not exercise it end to end because doing so requires a real Wix app secret and a Wix sandbox site to push events from. The bi-directional sync engine treats Wix and HubSpot symmetrically, so once `WIX_APP_SECRET` is set and a webhook URL is registered with Wix, the Wix-to-HubSpot direction comes alive without changing engine code. The form submission endpoint at `POST /api/forms/submit` is the path a Wix form actually posts to in production, and it is fully working.
-
-## Troubleshooting
-
-* **Invalid environment configuration** at backend boot. Your `.env` is missing or malformed. The error names the offending keys. `ENCRYPTION_KEY` must be 64 hex characters.
-* **`relation does not exist`** in backend logs. The migrations haven't run. From `backend/`, run `npm run migrate up`.
-* **`401 unauthorized`** on dashboard requests. The token in `frontend/.env` does not match `INTERNAL_API_TOKEN` in `.env`.
-* **HubSpot callback shows `redirect_uri mismatch`**. The `HUBSPOT_REDIRECT_URI` in `.env` does not exactly match a URL in HubSpot's Auth tab.
-* **HubSpot consent screen reports a scope mismatch**. You added scopes in HubSpot but did not click **Save changes** at the bottom of the page.
-* **Webhook returns `invalid_signature`**. The webhook secret in `.env` does not match the one HubSpot or Wix is signing with.
-* **OAuth callback returns `invalid_or_expired_state`**. The backend restarted between clicking Connect and accepting the consent screen (the state map is in memory) or more than five minutes passed.
-
-## Project structure
+## Repository layout
 
 ```
 backend/
   src/
-    config.ts          Strict env validation with zod
-    db.ts              pg pool + transaction helper
-    logger.ts          pino with token and PII redaction
-    crypto.ts          AES-256-GCM, HMAC, stable JSON hashing
-    types.ts           Shared types
+    config.ts            Strict env validation with zod
+    db.ts                pg pool with managed-Postgres SSL handling
+    logger.ts            pino with token and PII redaction
+    crypto.ts            AES-256-GCM, HMAC, stable JSON hashing
+    types.ts             Shared types
     middleware/
-      auth.ts          Internal token check
-      errorHandler.ts  Typed HttpError + global handler
+      auth.ts            Internal token check for dashboard routes
+      errorHandler.ts    HttpError + ZodError translation
       requestContext.ts  Correlation id per request
-    repositories/
-      installations.ts, tokens.ts, mappings.ts,
-      contactMap.ts, syncLog.ts
+    repositories/        Typed DB query helpers per table
     services/
-      tokenService.ts    HubSpot OAuth and auto-refresh
-      hubspotClient.ts   CRM and Properties API client
-      wixClient.ts       Wix Contacts v4 client
-      transforms.ts      Trim and lowercase
-      loopPrevention.ts  30-second dedupe window check
-      syncEngine.ts      Bi-directional sync
+      tokenService.ts        HubSpot OAuth + auto-refresh
+      hubspotClient.ts       HubSpot CRM + Properties API client
+      wixClient.ts           Wix Contacts v4 REST client
+      wixInstance.ts         Wix dashboard JWT verification
+      propertyBootstrap.ts   Auto-create HubSpot custom property group
+      transforms.ts          Trim, lowercase
+      loopPrevention.ts      30-second dedupe window
+      syncEngine.ts          Bi-directional sync, conflict resolution, idempotency
     routes/
-      auth.ts, webhooks.ts, sync.ts,
-      mappings.ts, forms.ts, installations.ts
-  migrations/          Five timestamped migrations
-  scripts/seed.ts      Demo data
+      auth.ts            HubSpot OAuth install / callback / disconnect
+      wixApp.ts          Wix install handshake from inside the iframe
+      webhooks.ts        HubSpot v1/v3 + Wix RS256 webhook receivers
+      sync.ts            Manual resync trigger + activity feed
+      mappings.ts        Field mapping CRUD with duplicate validation
+      forms.ts           Lead capture from Wix to HubSpot with UTM
+      installations.ts   Installation list + status
+  migrations/            Five timestamped migrations
+  scripts/seed.ts        Demo data
 frontend/
   src/
-    App.tsx
-    lib/api.ts         Typed REST client
+    App.tsx                              Dashboard shell, Wix install detection
+    lib/api.ts                           Typed REST client
     components/
-      ConnectionPanel.tsx
-      MappingTable.tsx
-      FormTester.tsx
-      SyncTester.tsx
-      SyncLogView.tsx
+      ConnectionPanel.tsx                Connect / Disconnect HubSpot
+      MappingTable.tsx                   Field mapping table
+      FormTester.tsx                     Capture a lead form
+      SyncTester.tsx                     Manual resync trigger
+      SyncLogView.tsx                    Activity feed with humanised reasons
     styles.css
+docs/NGROK.md            Local webhook testing setup
+DESIGN.md                Full architecture, ERD, OAuth flow, loop prevention reasoning
+docker-compose.yml       Postgres for local dev
+netlify.toml             Netlify build + CSP for Wix iframe embedding
+render.yaml              Render service config
 ```
+
+## Known limitations
+
+- The OAuth state map for the HubSpot install is in process memory. On Render's free tier the instance spins down with inactivity; if more than 50 seconds elapses between clicking Connect and accepting consent, the in-flight state expires and the user has to retry. A production deployment would persist state in Redis or Postgres.
+- The internal API token for dashboard-to-backend traffic is a shared secret. A future revision would replace it with the Wix-issued JWT (the same one we verify on iframe load) being passed on subsequent requests as a bearer token.
+- The Wix outbound client (`wixClient.ts`) uses Wix's older self-hosted refresh-token pattern where the install token IS the refresh token. If Wix changes that pattern, the token exchange code path is the single place to update.
+
+## Contact
+
+`beliya.anziya2022@gmail.com`
