@@ -2,14 +2,36 @@
 
 A self-hosted Wix app that connects a Wix site to HubSpot and keeps contacts in sync both ways. Wix form submissions are pushed into HubSpot with marketing attribution. A small dashboard lets the site owner connect or disconnect HubSpot, decide which fields flow between the two systems, and watch every sync event as it happens.
 
-## Live demo
+## All the URLs
+
+**For the reviewer:**
+
+| Purpose | URL |
+|---|---|
+| Wix install link (start here) | https://www.wix.com/app-market/test/e4e4d653-2748-42ec-bd6e-8c6f042c18e2 |
+| Dashboard (loads inside Wix after install) | https://wix-hubspot-sync.netlify.app |
+| GitHub repository | https://github.com/Beliya470/wix-hubspot-sync |
+
+**Infrastructure:**
 
 | Piece | URL |
 |---|---|
-| Frontend (dashboard) | https://wix-hubspot-sync.netlify.app |
-| Backend (API + webhooks) | https://wix-hubspot-sync-backend.onrender.com |
-| GitHub repository | https://github.com/Beliya470/wix-hubspot-sync |
+| Backend API + OAuth callbacks | https://wix-hubspot-sync-backend.onrender.com |
+| Backend health check | https://wix-hubspot-sync-backend.onrender.com/health |
+| HubSpot webhook endpoint | https://wix-hubspot-sync-backend.onrender.com/webhooks/hubspot |
+| Wix webhook endpoint | https://wix-hubspot-sync-backend.onrender.com/webhooks/wix |
+| HubSpot OAuth callback | https://wix-hubspot-sync-backend.onrender.com/auth/hubspot/callback |
+| Wix OAuth install handshake | https://wix-hubspot-sync-backend.onrender.com/api/wix/install |
 | Database | Neon Postgres (managed) |
+
+**Admin URLs you'll need during testing:**
+
+| Where | URL |
+|---|---|
+| HubSpot account (EU portal) | https://app-eu1.hubspot.com |
+| HubSpot developer apps | https://developers.hubspot.com |
+| Wix developer apps | https://dev.wix.com/apps |
+| Wix site dashboard | https://manage.wix.com |
 
 The backend runs on Render's free tier, so the first request after a quiet period takes about 50 seconds to wake the instance. Subsequent requests are fast.
 
