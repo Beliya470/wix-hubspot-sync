@@ -152,6 +152,13 @@ const wixPayload = z.object({
   eventType: z.string().optional(),
 }).passthrough();
 
+// Wix's developer dashboard pings the webhook URL with GET when you save a
+// subscription, to confirm the endpoint exists. Reply 200 so the dashboard
+// accepts the URL. Real webhook deliveries always arrive as POST below.
+webhooksRouter.get('/wix', (_req, res) => {
+  res.status(200).json({ ok: true });
+});
+
 webhooksRouter.post('/wix', rawJson, async (req, res, next) => {
   try {
     if (!verifyWixSignature(req, req.body as Buffer)) {
