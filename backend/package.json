@@ -7,9 +7,9 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "migrate": "node-pg-migrate -m migrations --envPath ../.env",
-    "migrate:up": "node-pg-migrate up -m migrations --envPath ../.env",
-    "migrate:down": "node-pg-migrate down -m migrations --envPath ../.env",
+    "migrate": "node-pg-migrate -m migrations",
+    "migrate:up": "node-pg-migrate up -m migrations",
+    "migrate:down": "node-pg-migrate down -m migrations",
     "seed": "tsx scripts/seed.ts",
     "typecheck": "tsc --noEmit"
   },
