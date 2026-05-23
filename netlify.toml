@@ -7,3 +7,12 @@
   from   = "/*"
   to     = "/index.html"
   status = 200
+
+# Allow Wix to embed the dashboard inside its Business Manager iframe.
+# The frame-ancestors directive replaces the legacy X-Frame-Options header
+# and lets us list the parent origins explicitly.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "frame-ancestors 'self' https://*.wix.com https://*.wixstudio.com https://manage.wix.com https://manage.editorx.com"
+    X-Frame-Options = "ALLOW-FROM https://manage.wix.com"
