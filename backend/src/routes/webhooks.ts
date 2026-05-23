@@ -12,9 +12,11 @@ import * as syncEngine from '../services/syncEngine';
 export const webhooksRouter = Router();
 
 // Both webhook routes need the raw request body for signature verification.
-// We mount raw body parsing scoped to these handlers so that the rest of the
-// app continues to use express.json().
-const rawJson = raw({ type: 'application/json', limit: '1mb' });
+// HubSpot posts with content-type application/json. Wix posts with
+// text/plain because the body is a raw JWT, not JSON. Accept either by
+// returning true from the type matcher; verification still rejects anything
+// that does not look like a signed payload.
+const rawJson = raw({ type: () => true, limit: '1mb' });
 
 function jsonBody<T>(buf: Buffer): T {
   return JSON.parse(buf.toString('utf8')) as T;
